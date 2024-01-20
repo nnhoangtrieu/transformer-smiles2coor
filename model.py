@@ -1,7 +1,9 @@
 import torch 
 import torch.nn as nn 
-from utils import clones 
+from utils import clones, subsequent_mask
 import math 
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SourceAttention(nn.Module) :
     def __init__(self, dim_model, num_head) :
@@ -155,3 +157,65 @@ class EncoderLayer(nn.Module) :
         x = x + self.drop2(x)   
 
         return x
+    
+
+
+class Decoder(nn.Module) :
+    def __init__(self, dim_model, num_head, num_layer, dropout, longest_coor) : 
+        super(Decoder, self).__init__()
+        self.layers = clones(DecoderLayer(dim_model, num_head, dropout, longest_coor), num_layer)
+        self.norm = nn.LayerNorm(dim_model)
+        self.out = nn.Linear(dim_model, 3)
+    def forward(self, x, target = None) :
+        for layer in self.layers : 
+            x = layer(x, target) 
+        out = self.out(x)
+        return out
+    
+class DecoderLayer(nn.Module) :
+    def __init__(self, dim_model, num_head, dropout, longest_coor) :
+        super (DecoderLayer, self).__init__()
+        self.dim_model = dim_model
+        self.longest_coor = longest_coor
+
+        self.norm1 = nn.LayerNorm(dim_model) 
+        self.self_attn = TargetAttention(dim_model, num_head, longest_coor)
+        self.drop1 = nn.Dropout(dropout) 
+
+        self.norm2 = nn.LayerNorm(dim_model)
+        self.cross_attn = SourceAttention(dim_model, num_head)
+        self.drop2 = nn.Dropout(dropout)
+        
+        self.norm3 = nn.LayerNorm(dim_model)
+        self.feed_foward = nn.Sequential(
+            nn.Linear(dim_model, dim_model),
+            nn.LeakyReLU(),
+            nn.Dropout(),
+            nn.Linear(dim_model, dim_model),
+            nn.LeakyReLU()
+        )
+        self.drop3 = nn.Dropout(dropout) 
+
+
+    def forward(self, memory, target) : 
+        x = torch.zeros(memory.size(0), 1, self.dim_model).to(device)
+        for i in range(1, self.longest_coor + 1) :
+            mask = subsequent_mask(i)
+            mask = mask.unsqueeze(1).to(device)
+            
+            y = self.norm1(x) 
+
+            attn, _ = self.self_attn(y, y, y, mask)
+            y = y + self.drop1(attn) 
+
+            y = self.norm2(y) 
+            attn, _ = self.cross_attn(y, memory, memory) 
+            y = y + self.drop2(attn) 
+
+            y = self.norm3(y)
+            y = y + self.drop3(self.feed_foward(y))
+            x = torch.cat((x, y[:, -1, :].unsqueeze(1)), dim = 1)
+        
+        return y 
+        
+            

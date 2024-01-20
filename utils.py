@@ -59,6 +59,13 @@ def parallel_f(f, input_list) :
     pool = multiprocessing.Pool()
     return pool.map(f, input_list)
 
+def subsequent_mask(size):
+    "Mask out subsequent positions."
+    attn_shape = (1, size, size)
+    subsequent_mask = torch.triu(torch.ones(attn_shape), diagonal=1).type(
+        torch.uint8
+    )
+    return subsequent_mask == 0
 
 class MyDataset(torch.utils.data.Dataset) : 
     def __init__(self, smint_list, coor_list) : 
