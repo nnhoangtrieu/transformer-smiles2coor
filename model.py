@@ -165,12 +165,13 @@ class Decoder(nn.Module) :
         super(Decoder, self).__init__()
         self.layers = clones(DecoderLayer(dim_model, num_head, dropout, longest_coor), num_layer)
         self.norm = nn.LayerNorm(dim_model)
-        self.out = nn.Linear(dim_model, 3)
-    def forward(self, x, target = None) :
+        # self.out = nn.Linear(dim_model, 3)
+    def forward(self, enc_out, target = None) :
         for layer in self.layers : 
-            x = layer(x, target) 
-        out = self.out(x)
-        return out
+            target, cross_attn = layer(enc_out, target) 
+        # out = self.out(target)
+        
+        return self.norm(target) , cross_attn
     
 class DecoderLayer(nn.Module) :
     def __init__(self, dim_model, num_head, dropout, longest_coor) :
@@ -201,12 +202,9 @@ class DecoderLayer(nn.Module) :
         )
         self.drop3 = nn.Dropout(dropout) 
 
+        self.out = nn.Linear(dim_model, 3)
 
-    def forward(self, memory, target) : 
-        target = target[:, :-1, :]
-        mask = subsequent_mask(self.longest_coor - 1)
-        mask = mask.unsqueeze(1).to(device)
-
+    def decode(self, memory, target, mask = None) : 
         target = self.seq1(target) 
         
         target = self.norm1(target) 
@@ -214,11 +212,35 @@ class DecoderLayer(nn.Module) :
         target = target + self.drop1(attn) 
 
         target = self.norm2(target) 
-        attn, _ = self.cross_attn(target, memory, memory)
+        attn, cross_attn = self.cross_attn(target, memory, memory)
         target = target + self.drop2(attn) 
 
         target = self.norm3(target) 
         target = target + self.drop3(self.feed_foward(target)) 
+
+        target = self.out(target)
+
+        return target, cross_attn
+
+    def forward(self, memory, target=None) : 
+        if target is not None :
+            target = target[:, :-1, :]
+            mask = subsequent_mask(self.longest_coor - 1)
+            mask = mask.unsqueeze(1).to(device)
+            return self.decode(memory, target, mask)
+
         
-        return target
+        # else : 
+        #     store = torch.zeros(memory.size(0), 1, 3).to(device)
+        #     target = torch.empty(0).to(device)
+        #     for i in range(self.longest_coor - 1) : 
+                
+        #         mask = subsequent_mask(i)
+        #         mask = mask.unsqueeze(1).to(device)
+        #         target, _ = self.decode(memory, target, mask)
+
+
+
+
+        
             
