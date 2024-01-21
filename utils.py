@@ -67,6 +67,15 @@ def subsequent_mask(size):
     )
     return subsequent_mask == 0
 
+def get_tgt_mask(target) :
+    mask = torch.empty(0) 
+    for i in range(1, target.size(1) + 1) :
+        temp = torch.clone(target)
+        temp[:, i:, :] = False
+        temp = temp.unsqueeze(1)
+        mask = torch.cat((mask, temp), dim = 1)
+    return mask 
+
 class MyDataset(torch.utils.data.Dataset) : 
     def __init__(self, smint_list, coor_list) : 
         self.smint_list = smint_list
