@@ -178,6 +178,11 @@ class DecoderLayer(nn.Module) :
         self.dim_model = dim_model
         self.longest_coor = longest_coor
 
+        self.seq1 = nn.Sequential(
+            nn.Linear(3, dim_model),
+            nn.LeakyReLU()
+        )
+
         self.norm1 = nn.LayerNorm(dim_model) 
         self.self_attn = TargetAttention(dim_model, num_head, longest_coor)
         self.drop1 = nn.Dropout(dropout) 
@@ -198,24 +203,22 @@ class DecoderLayer(nn.Module) :
 
 
     def forward(self, memory, target) : 
-        x = torch.zeros(memory.size(0), 1, self.dim_model).to(device)
-        for i in range(1, self.longest_coor + 1) :
-            mask = subsequent_mask(i)
-            mask = mask.unsqueeze(1).to(device)
-            
-            y = self.norm1(x) 
+        target = target[:, :-1, :]
+        mask = subsequent_mask(self.longest_coor - 1)
+        mask = mask.unsqueeze(1).to(device)
 
-            attn, _ = self.self_attn(y, y, y, mask)
-            y = y + self.drop1(attn) 
-
-            y = self.norm2(y) 
-            attn, _ = self.cross_attn(y, memory, memory) 
-            y = y + self.drop2(attn) 
-
-            y = self.norm3(y)
-            y = y + self.drop3(self.feed_foward(y))
-            x = torch.cat((x, y[:, -1, :].unsqueeze(1)), dim = 1)
+        target = self.seq1(target) 
         
-        return y 
+        target = self.norm1(target) 
+        attn, _ = self.self_attn(target, target, target, mask) 
+        target = target + self.drop1(attn) 
+
+        target = self.norm2(target) 
+        attn, _ = self.cross_attn(target, memory, memory)
+        target = target + self.drop2(attn) 
+
+        target = self.norm3(target) 
+        target = target + self.drop3(self.feed_foward(target)) 
         
+        return target
             
